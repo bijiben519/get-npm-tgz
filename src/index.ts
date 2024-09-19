@@ -16,6 +16,7 @@ import {
 	getTgzDownloadUrl,
 	readAndParsePackageLockJson
 } from "./utils";
+import { RequestPool } from "./pool";
 
 /** 命令行参数 */
 let cmdOptions: Options = {};
@@ -168,23 +169,17 @@ const downloadTgz = async () => {
 		return;
 	}
 
-	// 存储待执行的Promise函数数组
-	const downloadPromises = [];
+	const requestPool = new RequestPool(MAX_CONCURRENT_REQUESTS)
+
 	// 命令行参数传入的token
 	const token = cmdOptions?.token;
 	// 解析URL并生成文件名
-	const urlsToDownload = viewList.map(parseURL);
+	const urlsToDownload = viewList.map(parseURL).filter(Boolean) as { url: string; fileName: string }[];
 
 	// 控制并发下载数量
 	for (const { url, fileName } of urlsToDownload) {
-		if (downloadPromises.length >= MAX_CONCURRENT_REQUESTS) {
-			await Promise.all(downloadPromises);
-			downloadPromises.length = 0; // 清空已处理的请求
-		}
-		downloadPromises.push(downloadFile(url, fileName, token));
+		requestPool.addTask<void>(() => downloadFile(url, fileName, token))
 	}
-
-	await Promise.all(downloadPromises);
 };
 
 const downloadHandle = () => {

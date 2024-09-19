@@ -2,7 +2,7 @@ import fs from "node:fs";
 import axios from "axios";
 import { join } from "node:path";
 import { Options, PackageLockData } from "./types";
-import { REGISTER, REQUIRED_NPM_VERSION } from "./constans";
+import { MAX_RETRY_COUNT, REGISTER, REQUIRED_NPM_VERSION } from "./constans";
 
 /**
  * 获取源地址
@@ -103,7 +103,10 @@ export const delFile = (file: string) => {
  * @param url 文件的下载地址
  * @returns
  */
-export const parseURL = (url: string): { url: string; fileName: string } => {
+export const parseURL = (url: string): { url: string; fileName: string } | void => {
+	try {
+
+	
 	const parsedUrl = new URL(url);
 	if (!parsedUrl.protocol.startsWith("http")) {
 		throw new Error(`无效的URL: ${url}`);
@@ -115,6 +118,10 @@ export const parseURL = (url: string): { url: string; fileName: string } => {
 	const fileName = pathParts[1];
 
 	return { url, fileName };
+} catch (e: any) {
+	// 打印错误，但不阻塞解析和下载
+	console.error(e.message || e)
+}
 };
 
 /**
@@ -137,8 +144,9 @@ export const parseURL = (url: string): { url: string; fileName: string } => {
 export const downloadFile = async (
 	url: string,
 	fileName: string,
-	token?: string
-) => {
+	token?: string,
+	errorCount = 0,
+): Promise<void> => {
 	try {
 		// 发起GET请求下载文件，以流的形式处理响应数据。
 		const response = await axios.get(url, {
@@ -153,21 +161,24 @@ export const downloadFile = async (
 		const writeStream = fs.createWriteStream(filePath);
 
 		// 将响应数据写入流中
-		response.data
+		await new Promise<void>((resolve, reject) => {
+			response.data
 			.pipe(writeStream)
 			.on("finish", () => {
+				resolve()
 				console.log(`${fileName} 文件写入成功`);
 			})
 			.on("error", (err: Error) => {
-				console.error(`${fileName} 文件写入错误: ${err}`);
-
-				// 发生错误时，将url追加到error.txt文件中
-				appendFileRecord("error.txt", `${url}\n`).catch((appendError) => {
-					console.error(`${url}添加失败: ${appendError}`);
-				});
+				reject(`${fileName} 文件写入错误: ${err}`)
 			});
-	} catch (error) {
-		console.error(`${url}下载错误: ${error}`);
+		});
+	} catch (error: any) {
+		// 增加重试
+		if (errorCount < MAX_RETRY_COUNT) {
+			return downloadFile(url, fileName, token, errorCount + 1)
+		}
+
+		console.error(error.message || `${url}下载错误: ${error}`);
 
 		// 下载失败时，将url追加到error.txt文件中
 		appendFileRecord("error.txt", `${url}\n`).catch((appendError) => {
