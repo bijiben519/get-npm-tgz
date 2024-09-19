@@ -174,7 +174,7 @@ const downloadTgz = async () => {
 	// 命令行参数传入的token
 	const token = cmdOptions?.token;
 	// 解析URL并生成文件名
-	const urlsToDownload = viewList.map(parseURL).filter(Boolean) as { url: string; fileName: string; dirNames: string }[];
+	const urlsToDownload = [...new Set(viewList)].map(parseURL).filter(Boolean) as { url: string; fileName: string; dirNames: string }[];
 
 	// 控制并发下载数量
 	for (const { url, fileName, dirNames } of urlsToDownload) {
