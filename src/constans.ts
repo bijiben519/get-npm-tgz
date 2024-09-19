@@ -11,3 +11,7 @@ export const MAX_CONCURRENT_REQUESTS = 5;
 
 // npm版本号
 export const REQUIRED_NPM_VERSION = "9.8.1";
+
+
+// 下载失败最大重试次数
+export const MAX_RETRY_COUNT = 3
