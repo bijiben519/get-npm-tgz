@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import axios from "axios";
 import { join } from "node:path";
+import { mkdir } from 'fs/promises'
 import { Options, PackageLockData } from "./types";
 import { MAX_RETRY_COUNT, REGISTER, REQUIRED_NPM_VERSION } from "./constans";
 
@@ -101,9 +102,13 @@ export const delFile = (file: string) => {
 /**
  * 解析URL并生成文件名，同时进行简单的URL有效性检查
  * @param url 文件的下载地址
- * @returns
+ * @returns 
+ * url: 下载链接
+ * filename：文件名
+ * dirName：文件夹名称，避免直接用文件名在同一层会出现同名覆盖，若实现文件于types文件
+ * 已知case：@types/conventional-commits-parser 和 conventional-commits-parser
  */
-export const parseURL = (url: string): { url: string; fileName: string } | void => {
+export const parseURL = (url: string): { url: string; fileName: string; dirNames: string } | void => {
 	try {
 
 	
@@ -116,8 +121,9 @@ export const parseURL = (url: string): { url: string; fileName: string } | void 
 		throw new Error(`无法解析文件名从URL: ${url}`);
 	}
 	const fileName = pathParts[1];
+	const dirNames = pathParts[0]
 
-	return { url, fileName };
+	return { url, fileName, dirNames };
 } catch (e: any) {
 	// 打印错误，但不阻塞解析和下载
 	console.error(e.message || e)
@@ -142,11 +148,11 @@ export const parseURL = (url: string): { url: string; fileName: string } | void 
  *
  */
 export const downloadFile = async (
-	url: string,
-	fileName: string,
-	token?: string,
-	errorCount = 0,
-): Promise<void> => {
+	{ url, fileName, token, dirNames, errorCount = 0 }: { url: string;
+		fileName: string;
+		token?: string;
+		dirNames: string;
+		errorCount?: number }): Promise<void> => {
 	try {
 		// 发起GET请求下载文件，以流的形式处理响应数据。
 		const response = await axios.get(url, {
@@ -154,8 +160,15 @@ export const downloadFile = async (
 			headers: token ? { Authorization: `Basic ${token}` } : {}
 		});
 
+		
+		// 先判断文件夹在不在，不在得创建文件夹
+		const dir = `./tgz/${dirNames}`
+		if (!fs.existsSync(dir)) {
+			await mkdir(dir, { recursive: true })
+		}
+
 		// 指定文件保存的路径。
-		const filePath = `./tgz/${fileName}`;
+		const filePath = `${dir}/${fileName}`;
 
 		// 创建一个写入流，用于将接收到的文件数据写入到本地文件系统。
 		const writeStream = fs.createWriteStream(filePath);
@@ -175,7 +188,7 @@ export const downloadFile = async (
 	} catch (error: any) {
 		// 增加重试
 		if (errorCount < MAX_RETRY_COUNT) {
-			return downloadFile(url, fileName, token, errorCount + 1)
+			return downloadFile({ url, fileName, token, dirNames, errorCount: errorCount + 1 })
 		}
 
 		console.error(error.message || `${url}下载错误: ${error}`);
